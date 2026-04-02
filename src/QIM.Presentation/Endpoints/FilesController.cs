@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using QIM.Application.Interfaces.Services;
+using QIM.Presentation.Helpers;
 using QIM.Shared.Models;
 
 namespace QIM.Presentation.Endpoints;
@@ -23,6 +24,13 @@ public class FilesController : ApiControllerBase
         if (file is null || file.Length == 0)
             return BadRequest(Result.Failure("No file provided."));
 
+        if (Path.GetExtension(file.FileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+            && await file.IsMaliciousPdfAsync())
+        {
+            return UnprocessableEntity(Result.Failure(
+                "The uploaded PDF appears to contain potentially malicious content and cannot be accepted."));
+        }
+
         using var stream = file.OpenReadStream();
         var url = await _storage.UploadAsync(stream, file.FileName, folder);
         return Ok(Result<string>.Success(url, "File uploaded."));
@@ -36,6 +44,16 @@ public class FilesController : ApiControllerBase
     {
         if (files is null || files.Count == 0)
             return BadRequest(Result.Failure("No files provided."));
+
+        foreach (var f in files)
+        {
+            if (Path.GetExtension(f.FileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+                && await f.IsMaliciousPdfAsync())
+            {
+                return UnprocessableEntity(Result.Failure(
+                    $"The file '{f.FileName}' appears to contain potentially malicious content and cannot be accepted."));
+            }
+        }
 
         var pairs = new List<(Stream stream, string fileName)>();
         var streams = new List<Stream>();

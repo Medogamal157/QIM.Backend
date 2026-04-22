@@ -95,10 +95,11 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// ── Seed Database ──
+// ── Apply Migrations & Seed Database ──
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<QimDbContext>();
+    await context.Database.MigrateAsync();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     await DbSeeder.SeedAsync(context, userManager, roleManager);

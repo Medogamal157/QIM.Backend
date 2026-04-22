@@ -1,0 +1,67 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-QimDb}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # No public ports: DB is only reachable from the backend via the Docker network.
+    # For remote access, tunnel via: ssh -L 5432:localhost:5432 root@host (after opening port inside container).
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-QimDb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  backend:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:5000
+      ConnectionStrings__DefaultConnection: "Host=db;Database=${POSTGRES_DB:-QimDb};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD}"
+      JwtSettings__SecretKey: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY}
+      JwtSettings__Issuer: ${JWT_ISSUER:-QIM.WebApi}
+      JwtSettings__Audience: ${JWT_AUDIENCE:-QIM.Frontend}
+      CorsSettings__AllowedOrigins__0: ${FRONTEND_URL:-http://localhost:3000}
+      FrontendUrl: ${FRONTEND_URL:-http://localhost:3000}
+      MailSettings__Email: ${SMTP_EMAIL}
+      MailSettings__DisplayName: ${SMTP_DISPLAY_NAME:-Quayyem}
+      MailSettings__Password: ${SMTP_PASSWORD}
+      MailSettings__Host: ${SMTP_HOST:-smtp.hostinger.com}
+      MailSettings__Port: ${SMTP_PORT:-465}
+      MailSettings__UseSsl: ${SMTP_USE_SSL:-true}
+    ports:
+      # Bind to loopback only; nginx on the host proxies to this port.
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - uploads:/app/wwwroot/uploads
+
+  frontend:
+    build:
+      context: ../qim-frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:5000}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:5000}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://qim.sa}
+    ports:
+      # Bind to loopback only; nginx on the host proxies to this port.
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  pgdata:
+  uploads:

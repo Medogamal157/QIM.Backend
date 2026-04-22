@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using QIM.Application.DTOs.Auth;
 using QIM.Application.Interfaces.Auth;
+using QIM.Application.Interfaces.Services;
 using QIM.Domain.Common.Enums;
 using QIM.Domain.Entities.Identity;
 using QIM.Shared.Models;
@@ -14,17 +15,20 @@ public class AuthService : IAuthService
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
     private readonly IRefreshTokenStore _refreshTokenStore;
     private readonly IConfiguration _configuration;
+    private readonly IEmailService _emailService;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
         IJwtTokenGenerator jwtTokenGenerator,
         IRefreshTokenStore refreshTokenStore,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IEmailService emailService)
     {
         _userManager = userManager;
         _jwtTokenGenerator = jwtTokenGenerator;
         _refreshTokenStore = refreshTokenStore;
         _configuration = configuration;
+        _emailService = emailService;
     }
 
     public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request)
@@ -155,9 +159,41 @@ public class AuthService : IAuthService
 
         var token = await _userManager.GeneratePasswordResetTokenAsync(user);
 
-        // TODO: Phase 5+ will send email via IEmailService
-        // For now, return the token in the response (dev/test only)
-        return Result.Success($"Password reset token generated. Token: {token}");
+        var frontendUrl = _configuration["FrontendUrl"] ?? "http://localhost:3000";
+        var encodedToken = Uri.EscapeDataString(token);
+        var encodedEmail = Uri.EscapeDataString(user.Email ?? request.Email);
+        var resetLink = $"{frontendUrl.TrimEnd('/')}/reset-password?email={encodedEmail}&token={encodedToken}";
+
+        var html = $@"
+<!DOCTYPE html>
+<html>
+<body style=""font-family: Arial, sans-serif; background:#f6f6f6; padding:24px;"">
+  <div style=""max-width:560px; margin:auto; background:#fff; border-radius:8px; padding:32px;"">
+    <h2 style=""color:#1a365d;"">Reset your password</h2>
+    <p>Hello,</p>
+    <p>We received a request to reset the password for your Quayyem account.</p>
+    <p style=""text-align:center; margin:28px 0;"">
+      <a href=""{resetLink}"" style=""background:#1a365d; color:#fff; padding:12px 24px; border-radius:6px; text-decoration:none; display:inline-block;"">Reset Password</a>
+    </p>
+    <p>Or copy this link into your browser:</p>
+    <p style=""word-break:break-all; color:#555;"">{resetLink}</p>
+    <p>If you did not request this, you can safely ignore this email.</p>
+    <hr style=""border:none; border-top:1px solid #eee; margin:24px 0;"" />
+    <p style=""color:#888; font-size:12px;"">Quayyem - {DateTime.UtcNow.Year}</p>
+  </div>
+</body>
+</html>";
+
+        try
+        {
+            await _emailService.SendEmailAsync(request.Email, "Reset your Quayyem password", html);
+        }
+        catch
+        {
+            // Swallow — do not leak email existence or SMTP failures.
+        }
+
+        return Result.Success("If the email exists, a reset link has been sent.");
     }
 
     public async Task<Result> ResetPasswordAsync(ResetPasswordRequest request)

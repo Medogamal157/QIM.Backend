@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using QIM.Application.Interfaces.Auth;
+using QIM.Application.Interfaces.Services;
 using QIM.Domain.Entities.Identity;
 using QIM.Infrastructure.Services.Auth;
 using QIM.Persistence.Contexts;
@@ -27,6 +28,11 @@ public class TestBase
     protected WebApplicationBuilder _builder { get; set; }
     protected IServiceProvider _serviceProvider { get; set; }
     protected SqliteConnection _connection { get; set; }
+
+    // Captured email (from stub) for assertions
+    protected static string? LastEmailTo { get; set; }
+    protected static string? LastEmailSubject { get; set; }
+    protected static string? LastEmailHtml { get; set; }
 
     public TestBase()
     {
@@ -61,6 +67,18 @@ public class TestBase
         _builder.Services.AddScoped<IRefreshTokenStore, RefreshTokenStore>();
         _builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         _builder.Services.AddScoped<IAuthService, AuthService>();
+
+        // Stub email service for tests (no outgoing SMTP). Captures last message for assertions.
+        var emailMock = new Mock<IEmailService>();
+        emailMock.Setup(e => e.SendEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, string, CancellationToken>((to, subj, html, _) =>
+            {
+                LastEmailTo = to;
+                LastEmailSubject = subj;
+                LastEmailHtml = html;
+            })
+            .Returns(Task.CompletedTask);
+        _builder.Services.AddSingleton<IEmailService>(emailMock.Object);
 
         _serviceProvider = _builder.Services.BuildServiceProvider();
 

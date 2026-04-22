@@ -500,7 +500,8 @@ public class AuthServiceTests : TestBase
         });
 
         Assert.IsTrue(result.IsSuccess);
-        Assert.IsTrue(result.Message!.Contains("Token:"));
+        Assert.IsNotNull(LastEmailHtml);
+        Assert.IsTrue(LastEmailHtml!.Contains("token="));
     }
 
     [TestMethod]
@@ -533,8 +534,11 @@ public class AuthServiceTests : TestBase
             Email = "reset@example.com"
         });
 
-        // Extract token from dev message "Password reset token generated. Token: <token>"
-        var token = forgotResult.Message!.Split("Token: ")[1];
+        // Extract token from captured reset email URL
+        Assert.IsNotNull(LastEmailHtml);
+        var tokenMatch = System.Text.RegularExpressions.Regex.Match(LastEmailHtml!, "token=([^\"&]+)");
+        Assert.IsTrue(tokenMatch.Success, "Reset email did not contain token");
+        var token = System.Net.WebUtility.UrlDecode(tokenMatch.Groups[1].Value);
 
         var resetResult = await _authService.ResetPasswordAsync(new ResetPasswordRequest
         {

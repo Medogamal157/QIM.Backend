@@ -2,10 +2,12 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using QIM.Application.Common.Settings;
 using QIM.Application.Interfaces.Auth;
 using QIM.Application.Interfaces.Services;
 using QIM.Infrastructure.Services;
 using QIM.Infrastructure.Services.Auth;
+using QIM.Infrastructure.Services.Email;
 using System.Text;
 
 namespace QIM.Infrastructure.Extensions;
@@ -50,6 +52,10 @@ public static class InfrastructureServiceExtensions
             var env = sp.GetRequiredService<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
             return new LocalFileStorageService(env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot"));
         });
+
+        // Email
+        services.Configure<MailSettings>(configuration.GetSection("MailSettings"));
+        services.AddTransient<IEmailService, EmailService>();
 
         return services;
     }

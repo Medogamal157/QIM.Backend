@@ -10,6 +10,7 @@ COPY ["src/QIM.Domain/QIM.Domain.csproj", "src/QIM.Domain/"]
 COPY ["src/QIM.Persistence/QIM.Persistence.csproj", "src/QIM.Persistence/"]
 COPY ["src/QIM.Infrastructure/QIM.Infrastructure.csproj", "src/QIM.Infrastructure/"]
 COPY ["src/QIM.Presentation/QIM.Presentation.csproj", "src/QIM.Presentation/"]
+COPY ["src/QIM.Shared/QIM.Shared.csproj", "src/QIM.Shared/"]
 RUN dotnet restore "src/QIM.WebApi/QIM.WebApi.csproj"
 COPY . .
 WORKDIR "/src/src/QIM.WebApi"

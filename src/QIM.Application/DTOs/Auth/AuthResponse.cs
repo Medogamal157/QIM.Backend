@@ -6,6 +6,11 @@ public class AuthResponse
     public string RefreshToken { get; set; } = null!;
     public DateTime ExpiresAt { get; set; }
     public UserDto User { get; set; } = null!;
+
+    /// <summary>
+    /// Populated only for business-registration responses — the id of the newly created (pending) business.
+    /// </summary>
+    public int? BusinessId { get; set; }
 }
 
 public class UserDto

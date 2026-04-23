@@ -25,6 +25,17 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
+    /// Three-step business registration. Creates the provider user (role=Provider)
+    /// and a pending Business record that requires admin approval before appearing in search.
+    /// </summary>
+    [HttpPost("register-business")]
+    public async Task<IActionResult> RegisterBusiness([FromBody] RegisterBusinessRequest request)
+    {
+        var result = await _authService.RegisterBusinessAsync(request);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
     /// Login with email and password. Returns JWT + refresh token.
     /// </summary>
     [HttpPost("login")]

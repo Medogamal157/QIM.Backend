@@ -39,8 +39,7 @@ public class AuthServiceTests : TestBase
             Email = "client@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         };
 
         var result = await _authService.RegisterAsync(request);
@@ -65,8 +64,7 @@ public class AuthServiceTests : TestBase
             Email = "dupe@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         };
 
         var first = await _authService.RegisterAsync(request);
@@ -89,8 +87,7 @@ public class AuthServiceTests : TestBase
             Email = "login@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         var result = await _authService.LoginAsync(new LoginRequest
@@ -117,8 +114,7 @@ public class AuthServiceTests : TestBase
             Email = "wrongpass@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         var result = await _authService.LoginAsync(new LoginRequest
@@ -142,8 +138,7 @@ public class AuthServiceTests : TestBase
             Email = "clientonly@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         var result = await _authService.AdminLoginAsync(new LoginRequest
@@ -168,7 +163,7 @@ public class AuthServiceTests : TestBase
             UserName = "admin@example.com",
             Email = "admin@example.com",
             FullName = "Admin User",
-            UserType = UserType.Admin,
+
             IsActive = true
         };
         await userManager.CreateAsync(adminUser, "Admin@12345");
@@ -198,8 +193,7 @@ public class AuthServiceTests : TestBase
             Email = "refresh@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         Assert.IsTrue(registerResult.IsSuccess);
@@ -228,8 +222,7 @@ public class AuthServiceTests : TestBase
             Email = "revoke@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         Assert.IsTrue(registerResult.IsSuccess);
@@ -256,19 +249,34 @@ public class AuthServiceTests : TestBase
     [TestMethod]
     public async Task RegisterProvider_AssignsProviderRole()
     {
-        var result = await _authService.RegisterAsync(new RegisterRequest
+        // Seed a referenced activity so the FK in Businesses.ActivityId succeeds.
+        var db = GetDbContext();
+        db.Activities.Add(new QIM.Domain.Entities.Activity
         {
-            FullName = "Provider User",
+            Id = 1,
+            NameAr = "نشاط اختبار",
+            NameEn = "Test Activity",
+            IsEnabled = true
+        });
+        await db.SaveChangesAsync();
+
+        // Provider accounts can only be created via the business-registration endpoint.
+        var result = await _authService.RegisterBusinessAsync(new RegisterBusinessRequest
+        {
             Email = "provider@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Provider
+            NameAr = "Provider User",
+            NameEn = "Provider User",
+            ActivityId = 1,
+            PhoneNumbers = new List<string> { "+962799999999" },
+            AgreeTerms = true
         });
 
         Assert.IsTrue(result.IsSuccess);
         Assert.IsTrue(result.Data!.User.Roles.Contains("Provider"));
         Assert.AreEqual("Provider", result.Data.User.UserType);
+        Assert.IsNotNull(result.Data.BusinessId);
     }
 
     [TestMethod]
@@ -280,8 +288,7 @@ public class AuthServiceTests : TestBase
             Email = "mismatch@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Different@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         Assert.IsFalse(result.IsSuccess);
@@ -312,7 +319,7 @@ public class AuthServiceTests : TestBase
             UserName = "deactivated@example.com",
             Email = "deactivated@example.com",
             FullName = "Deactivated User",
-            UserType = UserType.Client,
+
             IsActive = false
         };
         await userManager.CreateAsync(user, "Test@12345");
@@ -337,7 +344,7 @@ public class AuthServiceTests : TestBase
             UserName = "deactivatedadmin@example.com",
             Email = "deactivatedadmin@example.com",
             FullName = "Deactivated Admin",
-            UserType = UserType.Admin,
+
             IsActive = false
         };
         await userManager.CreateAsync(user, "Admin@12345");
@@ -364,8 +371,7 @@ public class AuthServiceTests : TestBase
             Email = "logout@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
         Assert.IsTrue(registerResult.IsSuccess);
 
@@ -392,8 +398,7 @@ public class AuthServiceTests : TestBase
             Email = "changepass@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
         Assert.IsTrue(registerResult.IsSuccess);
 
@@ -433,8 +438,7 @@ public class AuthServiceTests : TestBase
             Email = "wrongcurrent@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
         Assert.IsTrue(registerResult.IsSuccess);
 
@@ -458,8 +462,7 @@ public class AuthServiceTests : TestBase
             Email = "revokeall@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
         Assert.IsTrue(registerResult.IsSuccess);
 
@@ -490,8 +493,7 @@ public class AuthServiceTests : TestBase
             Email = "forgot@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         var result = await _authService.ForgotPasswordAsync(new ForgotPasswordRequest
@@ -525,8 +527,7 @@ public class AuthServiceTests : TestBase
             Email = "reset@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         var forgotResult = await _authService.ForgotPasswordAsync(new ForgotPasswordRequest
@@ -567,8 +568,7 @@ public class AuthServiceTests : TestBase
             Email = "invalidtoken@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         var result = await _authService.ResetPasswordAsync(new ResetPasswordRequest
@@ -606,8 +606,7 @@ public class AuthServiceTests : TestBase
             Email = "claims@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         Assert.IsTrue(registerResult.IsSuccess);
@@ -633,8 +632,7 @@ public class AuthServiceTests : TestBase
             Email = "expiry@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         Assert.IsTrue(registerResult.IsSuccess);
@@ -652,8 +650,7 @@ public class AuthServiceTests : TestBase
             Email = "dto@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962791234567",
-            UserType = UserType.Client
+            PhoneNumber = "+962791234567"
         });
 
         Assert.IsTrue(result.IsSuccess);

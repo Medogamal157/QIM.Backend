@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using QIM.Application.DTOs.Auth;
+using QIM.Application.Interfaces;
 using QIM.Application.Interfaces.Auth;
 using QIM.Application.Interfaces.Services;
 using QIM.Domain.Common.Enums;
+using QIM.Domain.Entities;
 using QIM.Domain.Entities.Identity;
 using QIM.Shared.Models;
 
@@ -16,19 +18,22 @@ public class AuthService : IAuthService
     private readonly IRefreshTokenStore _refreshTokenStore;
     private readonly IConfiguration _configuration;
     private readonly IEmailService _emailService;
+    private readonly IUnitOfWork _uow;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
         IJwtTokenGenerator jwtTokenGenerator,
         IRefreshTokenStore refreshTokenStore,
         IConfiguration configuration,
-        IEmailService emailService)
+        IEmailService emailService,
+        IUnitOfWork uow)
     {
         _userManager = userManager;
         _jwtTokenGenerator = jwtTokenGenerator;
         _refreshTokenStore = refreshTokenStore;
         _configuration = configuration;
         _emailService = emailService;
+        _uow = uow;
     }
 
     public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request)
@@ -46,7 +51,7 @@ public class AuthService : IAuthService
             Email = request.Email,
             FullName = request.FullName,
             PhoneNumber = request.PhoneNumber,
-            UserType = request.UserType,
+            UserType = UserType.Client,
             IsActive = true
         };
 
@@ -54,16 +59,145 @@ public class AuthService : IAuthService
         if (!result.Succeeded)
             return Result<AuthResponse>.Failure(result.Errors.Select(e => e.Description).ToList());
 
-        // Assign role based on UserType
-        var roleName = request.UserType switch
-        {
-            UserType.Provider => "Provider",
-            UserType.Admin => "Admin",
-            _ => "Client"
-        };
-        await _userManager.AddToRoleAsync(user, roleName);
+        // Client self-registration always gets the Client role — never Admin / Provider.
+        await _userManager.AddToRoleAsync(user, "Client");
 
         return await GenerateAuthResponseAsync(user);
+    }
+
+    public async Task<Result<AuthResponse>> RegisterBusinessAsync(RegisterBusinessRequest request)
+    {
+        if (request.Password != request.ConfirmPassword)
+            return Result<AuthResponse>.Failure("Passwords do not match.");
+        if (!request.AgreeTerms)
+            return Result<AuthResponse>.Failure("You must agree to the terms to continue.");
+        if (string.IsNullOrWhiteSpace(request.NameAr) && string.IsNullOrWhiteSpace(request.NameEn))
+            return Result<AuthResponse>.Failure("Business name is required.");
+        if (request.ActivityId <= 0)
+            return Result<AuthResponse>.Failure("Activity is required.");
+
+        var existingUser = await _userManager.FindByEmailAsync(request.Email);
+        if (existingUser is not null)
+            return Result<AuthResponse>.Failure("An account with this email already exists.");
+
+        var phoneList = (request.PhoneNumbers ?? new List<string>())
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p.Trim())
+            .ToList();
+        var primaryPhone = request.WhatsApp ?? phoneList.FirstOrDefault();
+
+        var user = new ApplicationUser
+        {
+            UserName = request.Email,
+            Email = request.Email,
+            FullName = !string.IsNullOrWhiteSpace(request.NameAr) ? request.NameAr : request.NameEn,
+            PhoneNumber = primaryPhone,
+            UserType = UserType.Provider,
+            IsActive = true
+        };
+
+        var createResult = await _userManager.CreateAsync(user, request.Password);
+        if (!createResult.Succeeded)
+            return Result<AuthResponse>.Failure(createResult.Errors.Select(e => e.Description).ToList());
+
+        // Provider role is set server-side — never trust client input for role assignment.
+        await _userManager.AddToRoleAsync(user, "Provider");
+
+        try
+        {
+            // ── Create the Business in Pending status (awaits admin approval) ──
+            var business = new Business
+            {
+                NameAr = !string.IsNullOrWhiteSpace(request.NameAr) ? request.NameAr : request.NameEn,
+                NameEn = !string.IsNullOrWhiteSpace(request.NameEn) ? request.NameEn : request.NameAr,
+                DescriptionAr = request.DescriptionAr,
+                DescriptionEn = request.DescriptionEn,
+                OwnerId = user.Id,
+                ActivityId = request.ActivityId,
+                SpecialityId = request.SpecialityId,
+                Status = BusinessStatus.Pending,
+                Email = request.Email,
+                Website = request.Website,
+                Facebook = request.Facebook,
+                Instagram = request.Instagram,
+                WhatsApp = request.WhatsApp,
+                Phones = phoneList.Count > 0
+                    ? System.Text.Json.JsonSerializer.Serialize(phoneList)
+                    : null,
+                AccountCode = phoneList.FirstOrDefault(),
+                Rating = 0,
+                ReviewCount = 0
+            };
+
+            await _uow.Businesses.AddAsync(business);
+            await _uow.SaveChangesAsync();
+
+            // Keywords
+            foreach (var kw in (request.Keywords ?? new List<string>())
+                         .Where(k => !string.IsNullOrWhiteSpace(k))
+                         .Select(k => k.Trim())
+                         .Distinct())
+            {
+                await _uow.BusinessKeywords.AddAsync(new BusinessKeyword
+                {
+                    BusinessId = business.Id,
+                    Keyword = kw
+                });
+            }
+
+            // Addresses (first one is primary)
+            var validAddresses = (request.Addresses ?? new List<RegisterBusinessAddressDto>())
+                .Where(a => a.CountryId.HasValue || a.CityId.HasValue || a.DistrictId.HasValue
+                            || !string.IsNullOrWhiteSpace(a.StreetName))
+                .ToList();
+            for (var i = 0; i < validAddresses.Count; i++)
+            {
+                var a = validAddresses[i];
+                await _uow.BusinessAddresses.AddAsync(new BusinessAddress
+                {
+                    BusinessId = business.Id,
+                    CountryId = a.CountryId,
+                    CityId = a.CityId,
+                    DistrictId = a.DistrictId,
+                    StreetName = a.StreetName,
+                    BuildingNumber = a.BuildingNumber,
+                    MapUrl = a.MapUrl,
+                    IsPrimary = i == 0
+                });
+            }
+
+            // Work hours
+            foreach (var wh in request.WorkHours ?? new List<RegisterBusinessWorkHoursDto>())
+            {
+                TimeSpan? open = null, close = null;
+                if (!wh.IsClosed)
+                {
+                    if (TimeSpan.TryParse(wh.OpenTime, out var o)) open = o;
+                    if (TimeSpan.TryParse(wh.CloseTime, out var c)) close = c;
+                }
+                await _uow.BusinessWorkHoursRepo.AddAsync(new BusinessWorkHours
+                {
+                    BusinessId = business.Id,
+                    DayOfWeek = (DayOfWeek)wh.DayOfWeek,
+                    OpenTime = open,
+                    CloseTime = close,
+                    IsClosed = wh.IsClosed
+                });
+            }
+
+            await _uow.SaveChangesAsync();
+
+            var auth = await GenerateAuthResponseAsync(user);
+            if (auth.IsSuccess && auth.Data is not null)
+                auth.Data.BusinessId = business.Id;
+            return auth;
+        }
+        catch (Exception ex)
+        {
+            // Roll back the user so a half-registered provider doesn't get stuck.
+            try { await _userManager.DeleteAsync(user); } catch { /* best effort */ }
+            return Result<AuthResponse>.Failure($"Failed to register business: {ex.Message}");
+        }
     }
 
     public async Task<Result<AuthResponse>> LoginAsync(LoginRequest request)

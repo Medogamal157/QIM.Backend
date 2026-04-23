@@ -66,6 +66,7 @@ public class TestBase
         // Phase 2+ auth services
         _builder.Services.AddScoped<IRefreshTokenStore, RefreshTokenStore>();
         _builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
+        _builder.Services.AddScoped<QIM.Application.Interfaces.IUnitOfWork, UnitOfWork>();
         _builder.Services.AddScoped<IAuthService, AuthService>();
 
         // Stub email service for tests (no outgoing SMTP). Captures last message for assertions.

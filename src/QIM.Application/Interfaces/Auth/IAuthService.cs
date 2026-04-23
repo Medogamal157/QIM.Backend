@@ -9,6 +9,7 @@ namespace QIM.Application.Interfaces.Auth;
 public interface IAuthService
 {
     Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request);
+    Task<Result<AuthResponse>> RegisterBusinessAsync(RegisterBusinessRequest request);
     Task<Result<AuthResponse>> LoginAsync(LoginRequest request);
     Task<Result<AuthResponse>> AdminLoginAsync(LoginRequest request);
     Task<Result<AuthResponse>> RefreshTokenAsync(RefreshTokenRequest request);

@@ -63,8 +63,7 @@ public class AuthEndpointTests : TestBase
             Email = "clientrole@example.com",
             Password = "Test@12345",
             ConfirmPassword = "Test@12345",
-            PhoneNumber = "+962799999999",
-            UserType = UserType.Client
+            PhoneNumber = "+962799999999"
         });
 
         var controller = new AuthController(_authService)

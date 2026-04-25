@@ -10,7 +10,8 @@ namespace QIM.Presentation.Endpoints;
 // ── Admin Reviews Controller ──
 
 [Route("api/admin/reviews")]
-[Authorize(Roles = "Admin,SuperAdmin")]
+// DEF-019/DEF-NEW-002: Support is read-only; Moderator can read + approve/reject; delete is Admin/SuperAdmin.
+[Authorize(Roles = "Admin,SuperAdmin,Moderator,Support")]
 public class AdminReviewsController : ApiControllerBase
 {
     private readonly IMediator _mediator;
@@ -25,14 +26,17 @@ public class AdminReviewsController : ApiControllerBase
         => FromResult(await _mediator.Send(new GetAllReviewsQuery(page, pageSize, status)));
 
     [HttpPatch("{id:int}/approve")]
+    [Authorize(Roles = "Admin,SuperAdmin,Moderator")]
     public async Task<IActionResult> Approve(int id)
         => FromResult(await _mediator.Send(new ApproveReviewCommand(id)));
 
     [HttpPatch("{id:int}/reject")]
+    [Authorize(Roles = "Admin,SuperAdmin,Moderator")]
     public async Task<IActionResult> Reject(int id)
         => FromResult(await _mediator.Send(new RejectReviewCommand(id)));
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> Delete(int id)
         => FromResult(await _mediator.Send(new DeleteReviewCommand(id)));
 }

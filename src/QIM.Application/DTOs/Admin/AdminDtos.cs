@@ -11,6 +11,7 @@ public class AdminUserDto
     public bool IsVerified { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<string> Roles { get; set; } = new();
+    public string Role => Roles.FirstOrDefault() ?? "";
 }
 
 public class CreateAdminUserRequest

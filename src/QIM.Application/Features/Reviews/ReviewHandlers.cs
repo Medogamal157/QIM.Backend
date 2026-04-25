@@ -1,5 +1,6 @@
 using AutoMapper;
 using MediatR;
+using QIM.Application.Common.Security;
 using QIM.Application.DTOs.Business;
 using QIM.Application.Interfaces;
 using QIM.Domain.Common.Enums;
@@ -37,6 +38,8 @@ public class GetBusinessReviewsHandler : IRequestHandler<GetBusinessReviewsQuery
             includes: [r => r.User]);
 
         var dtos = _mapper.Map<List<ReviewDto>>(paged.Items);
+        // DEF-008: do not leak internal user GUIDs in public reviews API.
+        foreach (var d in dtos) d.UserId = null;
         return PaginatedResult<ReviewDto>.Success(dtos, paged.TotalCount, request.Page, request.PageSize);
     }
 }
@@ -131,13 +134,14 @@ public class CreateReviewHandler : IRequestHandler<CreateReviewCommand, Result<R
 
         var entity = _mapper.Map<Review>(request.Data);
         entity.UserId = request.UserId;
-        entity.Status = ReviewStatus.Approved; // auto-approve for now
+        // DEF-NEW-003: strip any HTML/script payload from user-supplied review text before persisting.
+        entity.Comment = HtmlSanitizer.Sanitize(entity.Comment);
+        // DEF-015: new reviews must enter moderation queue (Pending) until an admin approves them.
+        entity.Status = ReviewStatus.Pending;
 
         await _uow.Reviews.AddAsync(entity);
 
-        // Update business rating
-        biz.ReviewCount += 1;
-        biz.Rating = ((biz.Rating * (biz.ReviewCount - 1)) + entity.Rating) / biz.ReviewCount;
+        // Note: business ReviewCount/Rating are recomputed when the review transitions to Approved.
 
         await _uow.SaveChangesAsync(ct);
         return Result<ReviewDto>.Success(_mapper.Map<ReviewDto>(entity));
@@ -194,9 +198,23 @@ public class ApproveReviewHandler : IRequestHandler<ApproveReviewCommand, Result
         if (entity is null)
             return Result<ReviewDto>.Failure($"Review with Id {request.Id} was not found.");
 
+        var wasApproved = entity.Status == ReviewStatus.Approved;
         entity.Status = ReviewStatus.Approved;
         entity.FlagReason = null;
         entity.FlaggedByUserId = null;
+
+        // DEF-015 / DEF-007: increment business aggregates only on transition into Approved.
+        if (!wasApproved)
+        {
+            var biz = await _uow.Businesses.GetByIdAsync(entity.BusinessId);
+            if (biz is not null)
+            {
+                biz.ReviewCount += 1;
+                biz.Rating = biz.ReviewCount == 1
+                    ? entity.Rating
+                    : ((biz.Rating * (biz.ReviewCount - 1)) + entity.Rating) / biz.ReviewCount;
+            }
+        }
 
         await _uow.SaveChangesAsync(ct);
         return Result<ReviewDto>.Success(_mapper.Map<ReviewDto>(entity));
@@ -223,7 +241,25 @@ public class RejectReviewHandler : IRequestHandler<RejectReviewCommand, Result<R
         if (entity is null)
             return Result<ReviewDto>.Failure($"Review with Id {request.Id} was not found.");
 
+        var wasApproved = entity.Status == ReviewStatus.Approved;
         entity.Status = ReviewStatus.Rejected;
+
+        // If transitioning Approved -> Rejected, decrement business aggregates.
+        if (wasApproved)
+        {
+            var biz = await _uow.Businesses.GetByIdAsync(entity.BusinessId);
+            if (biz is not null && biz.ReviewCount > 1)
+            {
+                biz.Rating = ((biz.Rating * biz.ReviewCount) - entity.Rating) / (biz.ReviewCount - 1);
+                biz.ReviewCount -= 1;
+            }
+            else if (biz is not null)
+            {
+                biz.Rating = 0;
+                biz.ReviewCount = 0;
+            }
+        }
+
         await _uow.SaveChangesAsync(ct);
         return Result<ReviewDto>.Success(_mapper.Map<ReviewDto>(entity));
     }
@@ -244,17 +280,20 @@ public class DeleteReviewHandler : IRequestHandler<DeleteReviewCommand, Result>
         if (entity is null)
             return Result.Failure($"Review with Id {request.Id} was not found.");
 
-        // Update business rating
-        var biz = await _uow.Businesses.GetByIdAsync(entity.BusinessId);
-        if (biz is not null && biz.ReviewCount > 1)
+        // Update business rating only if the deleted review was contributing to aggregates (Approved).
+        if (entity.Status == ReviewStatus.Approved)
         {
-            biz.Rating = ((biz.Rating * biz.ReviewCount) - entity.Rating) / (biz.ReviewCount - 1);
-            biz.ReviewCount -= 1;
-        }
-        else if (biz is not null)
-        {
-            biz.Rating = 0;
-            biz.ReviewCount = 0;
+            var biz = await _uow.Businesses.GetByIdAsync(entity.BusinessId);
+            if (biz is not null && biz.ReviewCount > 1)
+            {
+                biz.Rating = ((biz.Rating * biz.ReviewCount) - entity.Rating) / (biz.ReviewCount - 1);
+                biz.ReviewCount -= 1;
+            }
+            else if (biz is not null)
+            {
+                biz.Rating = 0;
+                biz.ReviewCount = 0;
+            }
         }
 
         _uow.Reviews.SoftDelete(entity);

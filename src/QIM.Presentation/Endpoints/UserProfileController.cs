@@ -67,7 +67,7 @@ public class DashboardController : ApiControllerBase
 
 // ── Admin toggle user active ──
 
-[Route("api/admin/users")]
+[Route("api/admin/platform-users")]
 [Authorize(Roles = "SuperAdmin")]
 public class AdminUserManagementController : ApiControllerBase
 {

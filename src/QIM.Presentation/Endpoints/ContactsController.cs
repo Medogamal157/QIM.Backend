@@ -10,7 +10,8 @@ namespace QIM.Presentation.Endpoints;
 // ── Admin Contact Requests Controller ──
 
 [Route("api/admin/contacts")]
-[Authorize(Roles = "Admin,SuperAdmin")]
+// DEF-019: Support has read-only access to admin queues; status changes remain Admin/SuperAdmin only.
+[Authorize(Roles = "Admin,SuperAdmin,Support")]
 public class AdminContactsController : ApiControllerBase
 {
     private readonly IMediator _mediator;
@@ -29,6 +30,7 @@ public class AdminContactsController : ApiControllerBase
         => FromResult(await _mediator.Send(new GetContactRequestByIdQuery(id)));
 
     [HttpPatch("{id:int}/status")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> UpdateStatus(int id, [FromQuery] ContactStatus status, [FromQuery] string? notes = null)
         => FromResult(await _mediator.Send(new UpdateContactStatusCommand(id, status, notes)));
 }
@@ -36,7 +38,8 @@ public class AdminContactsController : ApiControllerBase
 // ── Admin Suggestions Controller ──
 
 [Route("api/admin/suggestions")]
-[Authorize(Roles = "Admin,SuperAdmin")]
+// DEF-019
+[Authorize(Roles = "Admin,SuperAdmin,Support")]
 public class AdminSuggestionsController : ApiControllerBase
 {
     private readonly IMediator _mediator;
@@ -55,6 +58,7 @@ public class AdminSuggestionsController : ApiControllerBase
         => FromResult(await _mediator.Send(new GetSuggestionByIdQuery(id)));
 
     [HttpPatch("{id:int}/status")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> UpdateStatus(int id, [FromQuery] SuggestionStatus status)
         => FromResult(await _mediator.Send(new UpdateSuggestionStatusCommand(id, status)));
 }

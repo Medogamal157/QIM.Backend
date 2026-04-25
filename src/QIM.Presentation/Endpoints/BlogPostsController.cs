@@ -8,7 +8,8 @@ using QIM.Application.Features.BlogPosts;
 namespace QIM.Presentation.Endpoints;
 
 [Route("api/admin/blog-posts")]
-[Authorize(Roles = "Admin,SuperAdmin")]
+// DEF-NEW-002: Moderator can author and manage blog posts; delete restricted to Admin/SuperAdmin.
+[Authorize(Roles = "Admin,SuperAdmin,Moderator")]
 public class BlogPostsController : ApiControllerBase
 {
     private readonly IMediator _mediator;
@@ -35,6 +36,7 @@ public class BlogPostsController : ApiControllerBase
         => FromResult(await _mediator.Send(new UpdateBlogPostCommand(id, request)));
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> Delete(int id)
         => FromResult(await _mediator.Send(new DeleteBlogPostCommand(id)));
 

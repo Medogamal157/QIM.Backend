@@ -1,5 +1,6 @@
 using AutoMapper;
 using MediatR;
+using QIM.Application.Common.Security;
 using QIM.Application.DTOs.Business;
 using QIM.Application.Interfaces;
 using QIM.Domain.Common.Enums;
@@ -80,6 +81,9 @@ public class CreateContactRequestHandler : IRequestHandler<CreateContactRequestC
     public async Task<Result<ContactRequestDto>> Handle(CreateContactRequestCommand request, CancellationToken ct)
     {
         var entity = _mapper.Map<ContactRequest>(request.Data);
+        // DEF-NEW-003: sanitize free-text fields submitted by anonymous visitors.
+        entity.Name = HtmlSanitizer.Sanitize(entity.Name) ?? entity.Name;
+        entity.Message = HtmlSanitizer.Sanitize(entity.Message) ?? entity.Message;
         entity.Status = ContactStatus.New;
 
         await _uow.ContactRequests.AddAsync(entity);
@@ -190,6 +194,9 @@ public class CreateSuggestionHandler : IRequestHandler<CreateSuggestionCommand, 
     public async Task<Result<SuggestionDto>> Handle(CreateSuggestionCommand request, CancellationToken ct)
     {
         var entity = _mapper.Map<Suggestion>(request.Data);
+        // DEF-NEW-003: sanitize free-text fields submitted by anonymous visitors.
+        entity.Name = HtmlSanitizer.Sanitize(entity.Name) ?? entity.Name;
+        entity.Message = HtmlSanitizer.Sanitize(entity.Message) ?? entity.Message;
         entity.Status = SuggestionStatus.New;
 
         await _uow.Suggestions.AddAsync(entity);

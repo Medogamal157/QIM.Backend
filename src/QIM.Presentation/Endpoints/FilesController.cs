@@ -15,6 +15,27 @@ public class FilesController : ApiControllerBase
 
     public FilesController(IFileStorageService storage) => _storage = storage;
 
+    private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg",
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+        ".txt", ".csv", ".zip", ".mp4", ".mp3"
+    };
+
+    private static string SanitizeFileName(string fileName)
+    {
+        // Strip path traversal components and return only the file name portion
+        var safe = Path.GetFileName(fileName);
+        if (string.IsNullOrWhiteSpace(safe)) safe = "upload";
+        return safe;
+    }
+
+    private static bool IsAllowedExtension(string fileName)
+    {
+        var ext = Path.GetExtension(fileName);
+        return !string.IsNullOrEmpty(ext) && AllowedExtensions.Contains(ext);
+    }
+
     /// <summary>
     /// Upload a single file.
     /// </summary>
@@ -24,7 +45,12 @@ public class FilesController : ApiControllerBase
         if (file is null || file.Length == 0)
             return BadRequest(Result.Failure("No file provided."));
 
-        if (Path.GetExtension(file.FileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+        var safeFileName = SanitizeFileName(file.FileName);
+
+        if (!IsAllowedExtension(safeFileName))
+            return BadRequest(Result.Failure($"File type '{Path.GetExtension(safeFileName)}' is not allowed."));
+
+        if (Path.GetExtension(safeFileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
             && await file.IsMaliciousPdfAsync())
         {
             return UnprocessableEntity(Result.Failure(
@@ -32,7 +58,7 @@ public class FilesController : ApiControllerBase
         }
 
         using var stream = file.OpenReadStream();
-        var url = await _storage.UploadAsync(stream, file.FileName, folder);
+        var url = await _storage.UploadAsync(stream, safeFileName, folder);
         return Ok(Result<string>.Success(url, "File uploaded."));
     }
 
@@ -47,7 +73,11 @@ public class FilesController : ApiControllerBase
 
         foreach (var f in files)
         {
-            if (Path.GetExtension(f.FileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+            var safeExt = SanitizeFileName(f.FileName);
+            if (!IsAllowedExtension(safeExt))
+                return BadRequest(Result.Failure($"File type '{Path.GetExtension(safeExt)}' is not allowed."));
+
+            if (Path.GetExtension(safeExt).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
                 && await f.IsMaliciousPdfAsync())
             {
                 return UnprocessableEntity(Result.Failure(
@@ -61,7 +91,7 @@ public class FilesController : ApiControllerBase
         {
             var s = f.OpenReadStream();
             streams.Add(s);
-            pairs.Add((s, f.FileName));
+            pairs.Add((s, SanitizeFileName(f.FileName)));
         }
 
         try

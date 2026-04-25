@@ -64,6 +64,12 @@ public class GenericRepository<T> : IGenericRepository<T> where T : BaseEntity
         bool descending = false,
         params Expression<Func<T, object>>[] includes)
     {
+        // DEF-NEW-008: defensively clamp pagination so a hostile client cannot crash the API
+        // (page=-1 used to cause a negative SQL OFFSET → 500).
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 1;
+        if (pageSize > 100) pageSize = 100;
+
         IQueryable<T> query = _dbSet;
 
         if (predicate is not null)

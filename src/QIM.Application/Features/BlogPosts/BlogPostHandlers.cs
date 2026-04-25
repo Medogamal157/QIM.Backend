@@ -107,6 +107,10 @@ public class CreateBlogPostHandler : IRequestHandler<CreateBlogPostCommand, Resu
     {
         var entity = _mapper.Map<Domain.Entities.BlogPost>(request.Data);
         entity.AuthorId = request.AuthorId;
+        // DEF-NEW-003: strip <script>/<style>/inline event handlers from rich-text body.
+        entity.ContentAr = QIM.Application.Common.Security.HtmlSanitizer.SanitizeRich(entity.ContentAr) ?? entity.ContentAr;
+        entity.ContentEn = QIM.Application.Common.Security.HtmlSanitizer.SanitizeRich(entity.ContentEn) ?? entity.ContentEn;
+        entity.Excerpt = QIM.Application.Common.Security.HtmlSanitizer.Sanitize(entity.Excerpt);
         entity.Status = BlogPostStatus.Draft;
 
         await _uow.BlogPosts.AddAsync(entity);
@@ -136,6 +140,10 @@ public class UpdateBlogPostHandler : IRequestHandler<UpdateBlogPostCommand, Resu
             return Result<BlogPostDto>.Failure($"BlogPost with Id {request.Id} was not found.");
 
         _mapper.Map(request.Data, entity);
+        // DEF-NEW-003: re-sanitize after mapping the update payload.
+        entity.ContentAr = QIM.Application.Common.Security.HtmlSanitizer.SanitizeRich(entity.ContentAr) ?? entity.ContentAr;
+        entity.ContentEn = QIM.Application.Common.Security.HtmlSanitizer.SanitizeRich(entity.ContentEn) ?? entity.ContentEn;
+        entity.Excerpt = QIM.Application.Common.Security.HtmlSanitizer.Sanitize(entity.Excerpt);
         await _uow.SaveChangesAsync(ct);
         return Result<BlogPostDto>.Success(_mapper.Map<BlogPostDto>(entity));
     }

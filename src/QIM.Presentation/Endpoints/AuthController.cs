@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using QIM.Application.DTOs.Auth;
 using QIM.Application.Interfaces.Auth;
 using System.Security.Claims;
@@ -17,6 +18,7 @@ public class AuthController : ControllerBase
     /// <summary>
     /// Register a new client or provider account.
     /// </summary>
+    [EnableRateLimiting("auth")]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
@@ -28,6 +30,7 @@ public class AuthController : ControllerBase
     /// Three-step business registration. Creates the provider user (role=Provider)
     /// and a pending Business record that requires admin approval before appearing in search.
     /// </summary>
+    [EnableRateLimiting("auth")]
     [HttpPost("register-business")]
     public async Task<IActionResult> RegisterBusiness([FromBody] RegisterBusinessRequest request)
     {
@@ -38,6 +41,7 @@ public class AuthController : ControllerBase
     /// <summary>
     /// Login with email and password. Returns JWT + refresh token.
     /// </summary>
+    [EnableRateLimiting("auth")]
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
@@ -48,6 +52,7 @@ public class AuthController : ControllerBase
     /// <summary>
     /// Admin-only login. Validates user has admin-level role.
     /// </summary>
+    [EnableRateLimiting("auth")]
     [HttpPost("admin-login")]
     public async Task<IActionResult> AdminLogin([FromBody] LoginRequest request)
     {
@@ -65,7 +70,9 @@ public class AuthController : ControllerBase
     /// <summary>
     /// Refresh access token using a valid refresh token.
     /// </summary>
+    // DEF-035: keep `/refresh` for backwards compatibility and expose the more conventional `/refresh-token` alias.
     [HttpPost("refresh")]
+    [HttpPost("refresh-token")]
     public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
     {
         var result = await _authService.RefreshTokenAsync(request);

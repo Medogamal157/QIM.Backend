@@ -96,7 +96,8 @@ public class ReviewHandlerTests : TestBase
 
         Assert.IsTrue(result.IsSuccess);
         Assert.AreEqual(4, result.Data!.Rating);
-        Assert.AreEqual(ReviewStatus.Approved, result.Data.Status);
+        // DEF-015: new reviews start in moderation queue.
+        Assert.AreEqual(ReviewStatus.Pending, result.Data.Status);
     }
 
     [TestMethod]
@@ -123,13 +124,18 @@ public class ReviewHandlerTests : TestBase
     [TestMethod]
     public async Task CreateReview_UpdatesBusinessRating()
     {
-        var handler = new CreateReviewHandler(_uow, _mapper);
-        await handler.Handle(
+        // DEF-015: aggregates only update when reviews are approved.
+        var createHandler = new CreateReviewHandler(_uow, _mapper);
+        var r1 = await createHandler.Handle(
             new CreateReviewCommand(new CreateReviewRequest { BusinessId = _businessId, Rating = 4 }, _userId),
             CancellationToken.None);
-        await handler.Handle(
+        var r2 = await createHandler.Handle(
             new CreateReviewCommand(new CreateReviewRequest { BusinessId = _businessId, Rating = 2 }, _user2Id),
             CancellationToken.None);
+
+        var approveHandler = new ApproveReviewHandler(_uow, _mapper);
+        await approveHandler.Handle(new ApproveReviewCommand(r1.Data!.Id), CancellationToken.None);
+        await approveHandler.Handle(new ApproveReviewCommand(r2.Data!.Id), CancellationToken.None);
 
         var biz = await _uow.Businesses.GetByIdAsync(_businessId);
         Assert.AreEqual(2, biz!.ReviewCount);
@@ -196,10 +202,14 @@ public class ReviewHandlerTests : TestBase
     [TestMethod]
     public async Task GetBusinessReviews_OnlyApproved()
     {
+        // DEF-015: only Approved reviews are returned to the public list.
         var createHandler = new CreateReviewHandler(_uow, _mapper);
-        await createHandler.Handle(
+        var created = await createHandler.Handle(
             new CreateReviewCommand(new CreateReviewRequest { BusinessId = _businessId, Rating = 5 }, _userId),
             CancellationToken.None);
+
+        var approveHandler = new ApproveReviewHandler(_uow, _mapper);
+        await approveHandler.Handle(new ApproveReviewCommand(created.Data!.Id), CancellationToken.None);
 
         var getHandler = new GetBusinessReviewsHandler(_uow, _mapper);
         var result = await getHandler.Handle(new GetBusinessReviewsQuery(_businessId), CancellationToken.None);

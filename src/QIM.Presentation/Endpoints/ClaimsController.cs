@@ -10,7 +10,8 @@ namespace QIM.Presentation.Endpoints;
 // ── Admin Claims Controller ──
 
 [Route("api/admin/claims")]
-[Authorize(Roles = "Admin,SuperAdmin")]
+// DEF-NEW-002: Moderator handles claim approvals; Support is read-only.
+[Authorize(Roles = "Admin,SuperAdmin,Moderator,Support")]
 public class AdminClaimsController : ApiControllerBase
 {
     private readonly IMediator _mediator;
@@ -29,10 +30,12 @@ public class AdminClaimsController : ApiControllerBase
         => FromResult(await _mediator.Send(new GetClaimByIdQuery(id)));
 
     [HttpPatch("{id:int}/approve")]
+    [Authorize(Roles = "Admin,SuperAdmin,Moderator")]
     public async Task<IActionResult> Approve(int id)
         => FromResult(await _mediator.Send(new ApproveClaimCommand(id)));
 
     [HttpPatch("{id:int}/reject")]
+    [Authorize(Roles = "Admin,SuperAdmin,Moderator")]
     public async Task<IActionResult> Reject(int id)
         => FromResult(await _mediator.Send(new RejectClaimCommand(id)));
 }

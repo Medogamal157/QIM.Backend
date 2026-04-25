@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using System.Threading.RateLimiting;
 using QIM.Domain.Entities.Identity;
 using QIM.Application.Extensions;
 using QIM.Infrastructure.Extensions;
@@ -58,6 +60,21 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 builder.Services.AddApplicationLayer();
 builder.Services.AddPersistenceLayer();
 builder.Services.AddInfrastructureLayer(builder.Configuration);
+
+// ── Rate Limiting ──
+builder.Services.AddRateLimiter(options =>
+{
+    // Sliding-window: 10 requests per 60 seconds per IP, queuing up to 2
+    options.AddSlidingWindowLimiter("auth", o =>
+    {
+        o.PermitLimit = 10;
+        o.Window = TimeSpan.FromMinutes(1);
+        o.SegmentsPerWindow = 6;
+        o.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        o.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
 
 // ── Controllers ──
 builder.Services.AddControllers();
@@ -130,6 +147,7 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
                      | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto,
 });
 app.UseCors("NextJsClient");
+app.UseRateLimiter();
 app.UseResponseCaching();
 app.UseStaticFiles();           // serve /uploads and other static assets
 app.UseHttpsRedirection();

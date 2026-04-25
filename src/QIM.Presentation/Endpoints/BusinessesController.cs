@@ -12,7 +12,8 @@ namespace QIM.Presentation.Endpoints;
 // ══════════════════════════════════════════════
 
 [Route("api/admin/businesses")]
-[Authorize(Roles = "Admin,SuperAdmin")]
+// DEF-019/DEF-NEW-002: Support is read-only; Moderator can read + approve/reject.
+[Authorize(Roles = "Admin,SuperAdmin,Moderator,Support")]
 public class AdminBusinessesController : ApiControllerBase
 {
     private readonly IMediator _mediator;
@@ -31,6 +32,7 @@ public class AdminBusinessesController : ApiControllerBase
         => FromResult(await _mediator.Send(new GetBusinessByIdQuery(id)));
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateBusinessRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
@@ -38,14 +40,17 @@ public class AdminBusinessesController : ApiControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> Delete(int id)
         => FromResult(await _mediator.Send(new DeleteBusinessCommand(id)));
 
     [HttpPatch("{id:int}/approve")]
+    [Authorize(Roles = "Admin,SuperAdmin,Moderator")]
     public async Task<IActionResult> Approve(int id)
         => FromResult(await _mediator.Send(new ApproveBusinessCommand(id)));
 
     [HttpPatch("{id:int}/reject")]
+    [Authorize(Roles = "Admin,SuperAdmin,Moderator")]
     public async Task<IActionResult> Reject(int id, [FromBody] RejectBusinessRequest? request = null)
         => FromResult(await _mediator.Send(new RejectBusinessCommand(id, request?.Reason)));
 }
@@ -77,7 +82,7 @@ public class BusinessesController : ApiControllerBase
     [HttpGet("{id:int}")]
     [AllowAnonymous]
     public async Task<IActionResult> GetById(int id)
-        => FromResult(await _mediator.Send(new GetBusinessByIdQuery(id)));
+        => FromResult(await _mediator.Send(new GetBusinessByIdQuery(id, IsPublicView: true)));
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateBusinessRequest request)
@@ -193,7 +198,7 @@ public class PublicBusinessesController : ApiControllerBase
     [HttpGet("{id:int}")]
     [ResponseCache(Duration = 60)]
     public async Task<IActionResult> GetById(int id)
-        => FromResult(await _mediator.Send(new GetBusinessByIdQuery(id)));
+        => FromResult(await _mediator.Send(new GetBusinessByIdQuery(id, IsPublicView: true)));
 
     [HttpGet("by-code/{code}")]
     [ResponseCache(Duration = 60)]

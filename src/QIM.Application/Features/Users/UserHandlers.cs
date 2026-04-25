@@ -28,6 +28,7 @@ public class GetUserProfileHandler : IRequestHandler<GetUserProfileQuery, Result
         if (user is null)
             return Result<UserProfileDto>.Failure("User not found.");
 
+        var roles = await _userManager.GetRolesAsync(user);
         var dto = new UserProfileDto
         {
             Id = user.Id,
@@ -38,7 +39,8 @@ public class GetUserProfileHandler : IRequestHandler<GetUserProfileQuery, Result
             UserType = user.UserType,
             IsVerified = user.IsVerified,
             IsActive = user.IsActive,
-            CreatedAt = user.CreatedAt
+            CreatedAt = user.CreatedAt,
+            Roles = roles.ToList()
         };
 
         return Result<UserProfileDto>.Success(dto);
@@ -113,6 +115,7 @@ public class UpdateProfileImageHandler : IRequestHandler<UpdateProfileImageComma
         user.ProfileImageUrl = request.ImageUrl;
         await _userManager.UpdateAsync(user);
 
+        var roles = await _userManager.GetRolesAsync(user);
         var dto = new UserProfileDto
         {
             Id = user.Id,
@@ -123,7 +126,8 @@ public class UpdateProfileImageHandler : IRequestHandler<UpdateProfileImageComma
             UserType = user.UserType,
             IsVerified = user.IsVerified,
             IsActive = user.IsActive,
-            CreatedAt = user.CreatedAt
+            CreatedAt = user.CreatedAt,
+            Roles = roles.ToList()
         };
 
         return Result<UserProfileDto>.Success(dto);
@@ -151,6 +155,7 @@ public class ToggleUserActiveHandler : IRequestHandler<ToggleUserActiveCommand, 
         user.IsActive = !user.IsActive;
         await _userManager.UpdateAsync(user);
 
+        var roles = await _userManager.GetRolesAsync(user);
         var dto = new UserProfileDto
         {
             Id = user.Id,
@@ -161,7 +166,8 @@ public class ToggleUserActiveHandler : IRequestHandler<ToggleUserActiveCommand, 
             UserType = user.UserType,
             IsVerified = user.IsVerified,
             IsActive = user.IsActive,
-            CreatedAt = user.CreatedAt
+            CreatedAt = user.CreatedAt,
+            Roles = roles.ToList()
         };
 
         return Result<UserProfileDto>.Success(dto);

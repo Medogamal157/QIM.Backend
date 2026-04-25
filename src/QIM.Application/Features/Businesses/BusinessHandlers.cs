@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using AutoMapper;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using QIM.Application.Common.Security;
 using QIM.Application.DTOs.Business;
 using QIM.Application.Interfaces;
 using QIM.Domain.Common.Enums;
@@ -44,7 +45,7 @@ public class GetAllBusinessesHandler : IRequestHandler<GetAllBusinessesQuery, Pa
 }
 
 // ── Get By Id (detail) ──
-public record GetBusinessByIdQuery(int Id) : IRequest<Result<BusinessDto>>;
+public record GetBusinessByIdQuery(int Id, bool IsPublicView = false) : IRequest<Result<BusinessDto>>;
 
 public class GetBusinessByIdHandler : IRequestHandler<GetBusinessByIdQuery, Result<BusinessDto>>
 {
@@ -59,8 +60,9 @@ public class GetBusinessByIdHandler : IRequestHandler<GetBusinessByIdQuery, Resu
 
     public async Task<Result<BusinessDto>> Handle(GetBusinessByIdQuery request, CancellationToken ct)
     {
+        // DEF-012: only public callers are restricted to Approved businesses; admins must see all statuses.
         var biz = await _uow.Businesses.FirstOrDefaultAsync(
-            b => b.Id == request.Id,
+            b => b.Id == request.Id && (!request.IsPublicView || b.Status == BusinessStatus.Approved),
             q => q.Include(b => b.Owner)
                   .Include(b => b.Activity)
                   .Include(b => b.Speciality)
@@ -74,12 +76,19 @@ public class GetBusinessByIdHandler : IRequestHandler<GetBusinessByIdQuery, Resu
         if (biz is null)
             return Result<BusinessDto>.Failure($"Business with Id {request.Id} was not found.");
 
-        return Result<BusinessDto>.Success(_mapper.Map<BusinessDto>(biz));
+        var dto = _mapper.Map<BusinessDto>(biz);
+        if (request.IsPublicView)
+        {
+            // DEF-003: do not leak owner identity to anonymous callers.
+            dto.OwnerId = null;
+            dto.OwnerName = null;
+        }
+        return Result<BusinessDto>.Success(dto);
     }
 }
 
 // ── Get By Account Code (public) ──
-public record GetBusinessByAccountCodeQuery(string AccountCode) : IRequest<Result<BusinessDto>>;
+public record GetBusinessByAccountCodeQuery(string AccountCode, bool IsPublicView = true) : IRequest<Result<BusinessDto>>;
 
 public class GetBusinessByAccountCodeHandler : IRequestHandler<GetBusinessByAccountCodeQuery, Result<BusinessDto>>
 {
@@ -109,7 +118,13 @@ public class GetBusinessByAccountCodeHandler : IRequestHandler<GetBusinessByAcco
         if (biz is null)
             return Result<BusinessDto>.Failure($"Business with AccountCode '{request.AccountCode}' was not found.");
 
-        return Result<BusinessDto>.Success(_mapper.Map<BusinessDto>(biz));
+        var dto = _mapper.Map<BusinessDto>(biz);
+        if (request.IsPublicView)
+        {
+            dto.OwnerId = null;
+            dto.OwnerName = null;
+        }
+        return Result<BusinessDto>.Success(dto);
     }
 }
 
@@ -359,6 +374,9 @@ public class CreateBusinessHandler : IRequestHandler<CreateBusinessCommand, Resu
     {
         var entity = _mapper.Map<Business>(request.Data);
         entity.OwnerId = request.OwnerId;
+        // DEF-NEW-003: sanitize provider-supplied free text (HTML/script payloads).
+        entity.DescriptionAr = HtmlSanitizer.Sanitize(entity.DescriptionAr);
+        entity.DescriptionEn = HtmlSanitizer.Sanitize(entity.DescriptionEn);
         entity.Status = BusinessStatus.Pending;
         entity.Rating = 0;
         entity.ReviewCount = 0;
@@ -422,13 +440,13 @@ public class UpdateBusinessHandler : IRequestHandler<UpdateBusinessCommand, Resu
 
         // Ownership guard – only the owner can update their business
         if (entity.OwnerId != request.RequesterId)
-            return Result<BusinessDto>.Failure("You are not authorized to update this business.");
+            return Result<BusinessDto>.Forbidden("You are not authorized to update this business.");
 
         var d = request.Data;
         if (d.NameAr is not null) entity.NameAr = d.NameAr;
         if (d.NameEn is not null) entity.NameEn = d.NameEn;
-        if (d.DescriptionAr is not null) entity.DescriptionAr = d.DescriptionAr;
-        if (d.DescriptionEn is not null) entity.DescriptionEn = d.DescriptionEn;
+        if (d.DescriptionAr is not null) entity.DescriptionAr = HtmlSanitizer.Sanitize(d.DescriptionAr);
+        if (d.DescriptionEn is not null) entity.DescriptionEn = HtmlSanitizer.Sanitize(d.DescriptionEn);
         if (d.ActivityId.HasValue) entity.ActivityId = d.ActivityId.Value;
         if (d.SpecialityId.HasValue) entity.SpecialityId = d.SpecialityId.Value;
         if (d.Email is not null) entity.Email = d.Email;
@@ -557,7 +575,7 @@ public class RenewBusinessHandler : IRequestHandler<RenewBusinessCommand, Result
         if (entity is null)
             return Result<BusinessDto>.Failure($"Business with Id {request.Id} was not found.");
         if (entity.OwnerId != request.RequesterId)
-            return Result<BusinessDto>.Failure("You are not the owner of this business.");
+            return Result<BusinessDto>.Forbidden("You are not the owner of this business.");
         if (entity.Status != BusinessStatus.Suspended && entity.Status != BusinessStatus.Rejected)
             return Result<BusinessDto>.Failure("Only suspended or rejected businesses can be renewed.");
 
@@ -587,7 +605,7 @@ public class CloseBusinessHandler : IRequestHandler<CloseBusinessCommand, Result
         if (entity is null)
             return Result<BusinessDto>.Failure($"Business with Id {request.Id} was not found.");
         if (entity.OwnerId != request.RequesterId)
-            return Result<BusinessDto>.Failure("You are not the owner of this business.");
+            return Result<BusinessDto>.Forbidden("You are not the owner of this business.");
         if (entity.Status == BusinessStatus.Suspended)
             return Result<BusinessDto>.Failure("Business is already suspended.");
 

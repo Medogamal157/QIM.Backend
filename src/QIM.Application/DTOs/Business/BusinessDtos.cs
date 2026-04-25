@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using QIM.Domain.Common.Enums;
 
 namespace QIM.Application.DTOs.Business;
@@ -11,8 +12,12 @@ public class BusinessDto
     public string NameEn { get; set; } = null!;
     public string? DescriptionAr { get; set; }
     public string? DescriptionEn { get; set; }
-    public string OwnerId { get; set; } = null!;
-    public string OwnerName { get; set; } = null!;
+    // DEF-NEW-007: Owner fields are stripped on the public projection. Suppress them in JSON when null
+    // so anonymous responses do not leak owner-shaped placeholders.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OwnerId { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OwnerName { get; set; }
     public int ActivityId { get; set; }
     public string ActivityNameAr { get; set; } = null!;
     public string ActivityNameEn { get; set; } = null!;
@@ -183,7 +188,7 @@ public class ReviewDto
 {
     public int Id { get; set; }
     public int BusinessId { get; set; }
-    public string UserId { get; set; } = null!;
+    public string? UserId { get; set; }
     public string UserName { get; set; } = null!;
     public int Rating { get; set; }
     public string? Comment { get; set; }
@@ -284,6 +289,9 @@ public class UserProfileDto
     public bool IsVerified { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
+    // DEF-NEW-005: include role(s) so the admin frontend can correctly hydrate the role badge
+    // and sidebar after a hard refresh / route navigation.
+    public IList<string> Roles { get; set; } = new List<string>();
 }
 
 public class UpdateProfileRequest

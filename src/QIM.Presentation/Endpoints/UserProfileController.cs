@@ -1,9 +1,14 @@
 using System.Security.Claims;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using QIM.Application.DTOs.Business;
 using QIM.Application.Features.Users;
+using QIM.Domain.Common.Enums;
+using QIM.Domain.Entities.Identity;
+using QIM.Shared.Models;
 
 namespace QIM.Presentation.Endpoints;
 
@@ -68,30 +73,90 @@ public class DashboardController : ApiControllerBase
 // ── Admin toggle user active ──
 
 [Route("api/admin/platform-users")]
-[Authorize(Roles = "SuperAdmin")]
+[Authorize(Roles = "Admin,SuperAdmin")]
 public class AdminUserManagementController : ApiControllerBase
 {
     private readonly IMediator _mediator;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    public AdminUserManagementController(IMediator mediator) => _mediator = mediator;
+    public AdminUserManagementController(IMediator mediator, UserManager<ApplicationUser> userManager)
+    {
+        _mediator = mediator;
+        _userManager = userManager;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetPlatformUsers(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? search = null,
+        [FromQuery] bool? isActive = null,
+        [FromQuery] bool? isVerified = null,
+        [FromQuery] UserType? userType = null)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        var query = _userManager.Users
+            .Where(u => !u.IsDeleted && (u.UserType == UserType.Client || u.UserType == UserType.Provider));
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var q = search.Trim().ToLower();
+            query = query.Where(u =>
+                u.FullName.ToLower().Contains(q) ||
+                (u.Email != null && u.Email.ToLower().Contains(q)) ||
+                (u.PhoneNumber != null && u.PhoneNumber.Contains(q)));
+        }
+
+        if (isActive.HasValue) query = query.Where(u => u.IsActive == isActive.Value);
+        if (isVerified.HasValue) query = query.Where(u => u.IsVerified == isVerified.Value);
+        if (userType.HasValue) query = query.Where(u => u.UserType == userType.Value);
+
+        var total = await query.CountAsync();
+        var users = await query
+            .OrderByDescending(u => u.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(u => new UserProfileDto
+            {
+                Id = u.Id,
+                FullName = u.FullName,
+                Email = u.Email,
+                PhoneNumber = u.PhoneNumber,
+                ProfileImageUrl = u.ProfileImageUrl,
+                UserType = u.UserType,
+                IsVerified = u.IsVerified,
+                IsActive = u.IsActive,
+                CreatedAt = u.CreatedAt
+            })
+            .ToListAsync();
+
+        return FromResult(PaginatedResult<UserProfileDto>.Success(users, total, page, pageSize));
+    }
 
     [HttpPatch("{userId}/toggle-active")]
+    [Authorize(Roles = "SuperAdmin")]
     public async Task<IActionResult> ToggleActive(string userId)
         => FromResult(await _mediator.Send(new ToggleUserActiveCommand(userId)));
 
     [HttpPatch("{userId}/verify")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> VerifyUser(string userId)
         => FromResult(await _mediator.Send(new VerifyUserCommand(userId)));
 
     [HttpPatch("{userId}/reject-verification")]
+    [Authorize(Roles = "Admin,SuperAdmin")]
     public async Task<IActionResult> RejectVerification(string userId)
         => FromResult(await _mediator.Send(new RejectUserVerificationCommand(userId)));
 
     [HttpDelete("{userId}")]
+    [Authorize(Roles = "SuperAdmin")]
     public async Task<IActionResult> SoftDeleteUser(string userId)
         => FromResult(await _mediator.Send(new SoftDeleteUserCommand(userId)));
 
     [HttpPatch("{userId}/reset-password")]
+    [Authorize(Roles = "SuperAdmin")]
     public async Task<IActionResult> ResetPassword(string userId, [FromBody] AdminResetPasswordRequest request)
         => FromResult(await _mediator.Send(new ResetUserPasswordCommand(userId, request.NewPassword)));
 }
